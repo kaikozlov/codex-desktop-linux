@@ -325,6 +325,49 @@ patch_linux_hotkey_windows() {
     ' "$main_bundle" || error "Failed to patch Linux hotkey window behavior in $main_bundle"
 }
 
+# ---- Patch renderer shortcut helpers to use Linux primary modifiers ----
+patch_linux_shortcuts() {
+    local assets_dir="$1/webview/assets"
+    local shortcut_bundle=""
+    local hotkey_bundle=""
+    local count=0
+
+    [ -d "$assets_dir" ] || error "Assets directory not found: $assets_dir"
+
+    while IFS= read -r path; do
+        shortcut_bundle="$path"
+        count=$((count + 1))
+    done < <(find "$assets_dir" -maxdepth 1 -type f -name "electron-menu-shortcuts-*.js" | sort)
+
+    [ "$count" -eq 1 ] || error "Expected exactly one electron-menu-shortcuts bundle in $assets_dir (found $count)"
+
+    count=0
+    while IFS= read -r path; do
+        hotkey_bundle="$path"
+        count=$((count + 1))
+    done < <(find "$assets_dir" -maxdepth 1 -type f -name "use-hotkey-*.js" | sort)
+
+    [ "$count" -eq 1 ] || error "Expected exactly one use-hotkey bundle in $assets_dir (found $count)"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched = q{import{zt as e}from"./app-scope-BnNVN5nr.js";function t(){let e=typeof document>`u`?``:document.documentElement?.dataset?.codexOs??``;return e===`darwin`?!0:e===`linux`||e===`win32`?!1:typeof navigator>`u`?!1:(navigator.platform??``).startsWith(`Mac`)}function n(){let e=typeof document>`u`?``:document.documentElement?.dataset?.codexOs??``;return e===`linux`?!0:e===`darwin`||e===`win32`?!1:typeof navigator>`u`?!1:(navigator.platform??``).startsWith(`Linux`)}function r(e,r=t(),i=!r&&n()){let a=e.split(`+`).filter(Boolean),o=new Set,s=null;for(let e of a)switch(e){case`CmdOrCtrl`:o.add(r?`Command`:`Ctrl`);break;case`Command`:case`Cmd`:o.add(r?`Command`:`Ctrl`);break;case`Control`:case`Ctrl`:o.add(`Ctrl`);break;case`Alt`:case`Option`:o.add(`Alt`);break;case`Shift`:o.add(`Shift`);break;default:s=e;break}let c=r&&s===`Plus`?`+`:s??``;if(r){let e={Ctrl:`⌃`,Alt:`⌥`,Shift:`⇧`,Command:`⌘`};return`${[`Ctrl`,`Alt`,`Shift`,`Command`].filter(e=>o.has(e)).map(t=>e[t]).join(``)}${c}`}let l=Array.from(o).map(e=>e===`Command`?`Cmd`:e);return[...[`Ctrl`,`Alt`,`Shift`,`Cmd`,`Super`,`Win`].filter(e=>l.includes(e)),c].filter(Boolean).join(`+`)}function i(n,i=t()){return r(e[n],i)}function a(t){return Object.prototype.hasOwnProperty.call(e,t)}export{a as i,r as n,i as r,t};};
+            $unpatched = q{import{zt as e}from"./app-scope-BnNVN5nr.js";function t(){return typeof navigator>`u`?!1:(navigator.platform??``).startsWith(`Mac`)}function n(){return typeof navigator>`u`?!1:(navigator.platform??``).startsWith(`Linux`)}function r(e,r=t(),i=!r&&n()){let a=e.split(`+`).filter(Boolean),o=new Set,s=null;for(let e of a)switch(e){case`CmdOrCtrl`:o.add(r?`Command`:`Ctrl`);break;case`Command`:case`Cmd`:o.add(r?`Command`:i?`Super`:`Win`);break;case`Control`:case`Ctrl`:o.add(`Ctrl`);break;case`Alt`:case`Option`:o.add(`Alt`);break;case`Shift`:o.add(`Shift`);break;default:s=e;break}let c=r&&s===`Plus`?`+`:s??``;if(r){let e={Ctrl:`⌃`,Alt:`⌥`,Shift:`⇧`,Command:`⌘`};return`${[`Ctrl`,`Alt`,`Shift`,`Command`].filter(e=>o.has(e)).map(t=>e[t]).join(``)}${c}`}let l=Array.from(o).map(e=>e===`Command`?`Cmd`:e);return[...[`Ctrl`,`Alt`,`Shift`,`Cmd`,`Super`,`Win`].filter(e=>l.includes(e)),c].filter(Boolean).join(`+`)}function i(n,i=t()){return r(e[n],i)}function a(t){return Object.prototype.hasOwnProperty.call(e,t)}export{a as i,r as n,i as r,t};};
+        }
+
+        /$patched/s or s/\Q$unpatched\E/$patched/s or die "Could not patch renderer shortcut labels in $ARGV\n";
+    ' "$shortcut_bundle" || error "Failed to patch renderer shortcut labels in $shortcut_bundle"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched = q{import{o as e}from"./chunk-CFjPhJqf.js";import{t}from"./react-CmOmxWgC.js";import{o as n}from"./logger-0hBhYY_-.js";import{t as r}from"./electron-menu-shortcuts-zH2Ed4s9.js";var i=n(),a=e(t(),1);function o(e,t){let n=e.split(`+`).filter(Boolean),r=null,i=!1,a=!1,o=!1,s=!1;for(let e of n)switch(e){case`CmdOrCtrl`:t?a=!0:i=!0;break;case`Command`:case`Cmd`:t?a=!0:i=!0;break;case`Control`:case`Ctrl`:i=!0;break;case`Alt`:case`Option`:o=!0;break;case`Shift`:s=!0;break;default:r=e.toLowerCase();break}return{key:r??``,requireCtrl:i,requireMeta:a,requireAlt:o,requireShift:s}}function s(e,t){return e.target instanceof Element?e.target.closest(t)!=null:!1}function c(e,t){return!(!t.key||e.key.toLowerCase()!==t.key||e.ctrlKey!==t.requireCtrl||e.metaKey!==t.requireMeta||e.altKey!==t.requireAlt||e.shiftKey!==t.requireShift)}function l(e){let t=(0,i.c)(20),{accelerator:n,enabled:l,onKeyDown:u,onKeyUp:d,capture:f,ignoreWithin:p}=e,m=l===void 0?!0:l,h=f===void 0?!0:f,g;t[0]===n?g=t[1]:(g=o(n,r()),t[0]=n,t[1]=g);let _=g,v=(0,a.useRef)(!1),y=d!=null,b;t[2]!==m||t[3]!==p||t[4]!==u||t[5]!==_?(b=e=>{m&&(e.repeat||p&&s(e,p)||c(e,_)&&(v.current=!0,u?.(e)))},t[2]=m,t[3]=p,t[4]=u,t[5]=_,t[6]=b):b=t[6];let x=(0,a.useEffectEvent)(b),S;t[7]!==d||t[8]!==_?(S=e=>{v.current&&e.key.toLowerCase()===_.key.toLowerCase()&&(v.current=!1,d?.(e))},t[7]=d,t[8]=_,t[9]=S):S=t[9];let C=(0,a.useEffectEvent)(S),w;t[10]!==h||t[11]!==m||t[12]!==x||t[13]!==C||t[14]!==y?(w=()=>{if(!m){v.current=!1;return}return window.addEventListener(`keydown`,x,{capture:h}),y&&window.addEventListener(`keyup`,C,{capture:h}),()=>{window.removeEventListener(`keydown`,x,{capture:h}),y&&window.removeEventListener(`keyup`,C,{capture:h}),v.current=!1}},t[10]=h,t[11]=m,t[12]=x,t[13]=C,t[14]=y,t[15]=w):w=t[15];let T;t[16]!==h||t[17]!==m||t[18]!==y?(T=[h,m,y],t[16]=h,t[17]=m,t[18]=y,t[19]=T):T=t[19],(0,a.useEffect)(w,T)}export{l as t};};
+            $unpatched = q{import{o as e}from"./chunk-CFjPhJqf.js";import{t}from"./react-CmOmxWgC.js";import{o as n}from"./logger-0hBhYY_-.js";import{t as r}from"./electron-menu-shortcuts-zH2Ed4s9.js";var i=n(),a=e(t(),1);function o(e,t){let n=e.split(`+`).filter(Boolean),r=null,i=!1,a=!1,o=!1,s=!1;for(let e of n)switch(e){case`CmdOrCtrl`:t?a=!0:i=!0;break;case`Command`:case`Cmd`:a=!0;break;case`Control`:case`Ctrl`:i=!0;break;case`Alt`:case`Option`:o=!0;break;case`Shift`:s=!0;break;default:r=e.toLowerCase();break}return{key:r??``,requireCtrl:i,requireMeta:a,requireAlt:o,requireShift:s}}function s(e,t){return e.target instanceof Element?e.target.closest(t)!=null:!1}function c(e,t){return!(!t.key||e.key.toLowerCase()!==t.key||e.ctrlKey!==t.requireCtrl||e.metaKey!==t.requireMeta||e.altKey!==t.requireAlt||e.shiftKey!==t.requireShift)}function l(e){let t=(0,i.c)(20),{accelerator:n,enabled:l,onKeyDown:u,onKeyUp:d,capture:f,ignoreWithin:p}=e,m=l===void 0?!0:l,h=f===void 0?!0:f,g;t[0]===n?g=t[1]:(g=o(n,r()),t[0]=n,t[1]=g);let _=g,v=(0,a.useRef)(!1),y=d!=null,b;t[2]!==m||t[3]!==p||t[4]!==u||t[5]!==_?(b=e=>{m&&(e.repeat||p&&s(e,p)||c(e,_)&&(v.current=!0,u?.(e)))},t[2]=m,t[3]=p,t[4]=u,t[5]=_,t[6]=b):b=t[6];let x=(0,a.useEffectEvent)(b),S;t[7]!==d||t[8]!==_?(S=e=>{v.current&&e.key.toLowerCase()===_.key.toLowerCase()&&(v.current=!1,d?.(e))},t[7]=d,t[8]=_,t[9]=S):S=t[9];let C=(0,a.useEffectEvent)(S),w;t[10]!==h||t[11]!==m||t[12]!==x||t[13]!==C||t[14]!==y?(w=()=>{if(!m){v.current=!1;return}return window.addEventListener(`keydown`,x,{capture:h}),y&&window.addEventListener(`keyup`,C,{capture:h}),()=>{window.removeEventListener(`keydown`,x,{capture:h}),y&&window.removeEventListener(`keyup`,C,{capture:h}),v.current=!1}},t[10]=h,t[11]=m,t[12]=x,t[13]=C,t[14]=y,t[15]=w):w=t[15];let T;t[16]!==h||t[17]!==m||t[18]!==y?(T=[h,m,y],t[16]=h,t[17]=m,t[18]=y,t[19]=T):T=t[19],(0,a.useEffect)(w,T)}export{l as t};};
+        }
+
+        /$patched/s or s/\Q$unpatched\E/$patched/s or die "Could not patch renderer shortcut parser in $ARGV\n";
+    ' "$hotkey_bundle" || error "Failed to patch renderer shortcut parser in $hotkey_bundle"
+}
+
 # ---- Extract and patch app.asar ----
 patch_asar() {
     local app_dir="$1"
@@ -356,6 +399,9 @@ patch_asar() {
 
     # Transparent hotkey windows ghost badly on some Linux/Wayland stacks.
     patch_linux_hotkey_windows "$WORK_DIR/app-extracted"
+
+    # Some renderer shortcuts are authored with macOS-style Command bindings.
+    patch_linux_shortcuts "$WORK_DIR/app-extracted"
 
     # Build native modules in clean environment and copy back
     build_native_modules "$WORK_DIR/app-extracted"
