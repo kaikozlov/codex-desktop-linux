@@ -8,7 +8,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="${CODEX_INSTALL_DIR:-$SCRIPT_DIR/codex-app}"
-ELECTRON_VERSION="40.0.0"
+ELECTRON_VERSION="41.0.3"
 WORK_DIR="$(mktemp -d)"
 ARCH="$(uname -m)"
 
@@ -127,6 +127,7 @@ extract_dmg() {
 # ---- Build native modules in a clean directory ----
 build_native_modules() {
     local app_extracted="$1"
+    local electron_major bs3_build_ver
 
     # Read versions from extracted app
     local bs3_ver npty_ver
@@ -136,7 +137,15 @@ build_native_modules() {
     [ -n "$bs3_ver" ] || error "Could not detect better-sqlite3 version"
     [ -n "$npty_ver" ] || error "Could not detect node-pty version"
 
-    info "Native modules: better-sqlite3@$bs3_ver, node-pty@$npty_ver"
+    electron_major="${ELECTRON_VERSION%%.*}"
+    bs3_build_ver="${BETTER_SQLITE3_VERSION:-$bs3_ver}"
+
+    # better-sqlite3@12.5.0 does not build against Electron 41's V8 headers.
+    if [ -z "${BETTER_SQLITE3_VERSION:-}" ] && [ "$electron_major" -ge 41 ] && [ "$bs3_ver" = "12.5.0" ]; then
+        bs3_build_ver="12.8.0"
+    fi
+
+    info "Native modules: better-sqlite3@$bs3_ver -> $bs3_build_ver, node-pty@$npty_ver"
 
     # Build in a CLEAN directory (asar doesn't have full source)
     local build_dir="$WORK_DIR/native-build"
@@ -147,7 +156,7 @@ build_native_modules() {
 
     info "Installing fresh sources from npm..."
     npm install "electron@$ELECTRON_VERSION" --save-dev --ignore-scripts 2>&1 >&2
-    npm install "better-sqlite3@$bs3_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2
+    npm install "better-sqlite3@$bs3_build_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2
 
     info "Compiling for Electron v$ELECTRON_VERSION (this takes ~1 min)..."
     npx --yes @electron/rebuild -v "$ELECTRON_VERSION" --force 2>&1 >&2
