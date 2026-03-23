@@ -209,6 +209,122 @@ patch_linux_window_backdrop() {
     ' "$main_bundle" || error "Failed to patch Linux window backdrop helper in $main_bundle"
 }
 
+# ---- Patch Linux primary window title bar ----
+patch_linux_primary_titlebar() {
+    local build_dir="$1/.vite/build"
+    local main_bundle=""
+    local bundle_count=0
+
+    [ -d "$build_dir" ] || error "Build directory not found: $build_dir"
+
+    while IFS= read -r path; do
+        main_bundle="$path"
+        bundle_count=$((bundle_count + 1))
+    done < <(find "$build_dir" -maxdepth 1 -type f -name "main-*.js" | sort)
+
+    [ "$bundle_count" -eq 1 ] || error "Expected exactly one main bundle in $build_dir (found $bundle_count)"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched = qr/case["`]primary["`]:return \w+===["`]darwin["`]\?\w+\?\{titleBarStyle:["`]hiddenInset["`],trafficLightPosition:\{x:16,y:16\}\}:\{vibrancy:["`]menu["`],visualEffectState:["`]active["`],titleBarStyle:["`]hiddenInset["`],trafficLightPosition:\{x:16,y:16\}\}:\w+===["`]win32["`]\?\{titleBarStyle:["`]hidden["`],titleBarOverlay:\w+\(\)\}:\w+===["`]linux["`]\?\{titleBarStyle:["`]hidden["`],titleBarOverlay:\w+\(\)\}:\{titleBarStyle:["`]default["`]\}/s;
+            $unpatched = qr/case["`]primary["`]:return (\w+)===["`]darwin["`]\?(\w+)\?\{titleBarStyle:["`]hiddenInset["`],trafficLightPosition:\{x:16,y:16\}\}:\{vibrancy:["`]menu["`],visualEffectState:["`]active["`],titleBarStyle:["`]hiddenInset["`],trafficLightPosition:\{x:16,y:16\}\}:\1===["`]win32["`]\?\{titleBarStyle:["`]hidden["`],titleBarOverlay:(\w+)\(\)\}:\{titleBarStyle:["`]default["`]\}/s;
+        }
+
+        if (/$patched/) {
+            $changed = 1;
+            next;
+        }
+
+        if (s/$unpatched/case`primary`:return $1===`darwin`?$2?{titleBarStyle:`hiddenInset`,trafficLightPosition:{x:16,y:16}}:{vibrancy:`menu`,visualEffectState:`active`,titleBarStyle:`hiddenInset`,trafficLightPosition:{x:16,y:16}}:$1===`win32`?{titleBarStyle:`hidden`,titleBarOverlay:$3()}:$1===`linux`?{titleBarStyle:`hidden`,titleBarOverlay:$3()}:{titleBarStyle:`default`}/s) {
+            $changed = 1;
+            next;
+        }
+
+        die "Could not locate Linux primary window titlebar helper in $ARGV\n";
+
+        END {
+            die "Failed to patch Linux primary window titlebar helper in $ARGV\n" if !$changed;
+        }
+    ' "$main_bundle" || error "Failed to patch Linux primary window titlebar helper in $main_bundle"
+}
+
+# ---- Patch Linux title bar overlay colors ----
+patch_linux_titlebar_overlay_style() {
+    local build_dir="$1/.vite/build"
+    local main_bundle=""
+    local bundle_count=0
+
+    [ -d "$build_dir" ] || error "Build directory not found: $build_dir"
+
+    while IFS= read -r path; do
+        main_bundle="$path"
+        bundle_count=$((bundle_count + 1))
+    done < <(find "$build_dir" -maxdepth 1 -type f -name "main-*.js" | sort)
+
+    [ "$bundle_count" -eq 1 ] || error "Expected exactly one main bundle in $build_dir (found $bundle_count)"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched = qr/function\s+\w+\(\)\{return\{color:\w+\.nativeTheme\.shouldUseDarkColors\?["`]#2f2e2b["`]:["`]#ebebeb["`],symbolColor:\w+\.nativeTheme\.shouldUseDarkColors\?["`]#c7c7c7["`]:["`]#1f1f1f["`],height:\w+\}\}/s;
+            $unpatched = qr/function\s+(\w+)\(\)\{return\{color:(\w+),symbolColor:(\w+)\.nativeTheme\.shouldUseDarkColors\?(\w+):(\w+),height:(\w+)\}\}/s;
+        }
+
+        if (/$patched/) {
+            $changed = 1;
+            next;
+        }
+
+        if (s/$unpatched/function $1(){return{color:$3.nativeTheme.shouldUseDarkColors?`#2f2e2b`:`#ebebeb`,symbolColor:$3.nativeTheme.shouldUseDarkColors?`#c7c7c7`:`#1f1f1f`,height:$6}}/s) {
+            $changed = 1;
+            next;
+        }
+
+        die "Could not locate Linux titlebar overlay helper in $ARGV\n";
+
+        END {
+            die "Failed to patch Linux titlebar overlay helper in $ARGV\n" if !$changed;
+        }
+    ' "$main_bundle" || error "Failed to patch Linux titlebar overlay helper in $main_bundle"
+}
+
+# ---- Patch Linux hotkey windows to avoid transparent window ghosting ----
+patch_linux_hotkey_windows() {
+    local build_dir="$1/.vite/build"
+    local main_bundle=""
+    local bundle_count=0
+
+    [ -d "$build_dir" ] || error "Build directory not found: $build_dir"
+
+    while IFS= read -r path; do
+        main_bundle="$path"
+        bundle_count=$((bundle_count + 1))
+    done < <(find "$build_dir" -maxdepth 1 -type f -name "main-*.js" | sort)
+
+    [ "$bundle_count" -eq 1 ] || error "Expected exactly one main bundle in $build_dir (found $bundle_count)"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched_cm = qr/function\s+\w+\(\{platform:\w+,appearance:\w+,opaqueWindowsEnabled:\w+,prefersDarkColors:\w+\}\)\{return \w+===["`]win32["`]&&\w+!==["`]hotkeyWindowHome["`]&&\w+!==["`]hotkeyWindowThread["`]\?\w+\?\{backgroundColor:\w+\?\w+:\w+,backgroundMaterial:["`]none["`]\}:\{backgroundColor:\w+,backgroundMaterial:["`]mica["`]\}:\w+===["`]linux["`]\?\{backgroundColor:\w+\?\w+:\w+,backgroundMaterial:null\}:\{backgroundColor:\w+,backgroundMaterial:null\}\}/s;
+            $unpatched_cm = qr/function\s+(\w+)\(\{platform:(\w+),appearance:(\w+),opaqueWindowsEnabled:(\w+),prefersDarkColors:(\w+)\}\)\{return \2===["`]win32["`]&&\3!==["`]hotkeyWindowHome["`]&&\3!==["`]hotkeyWindowThread["`]\?\4\?\{backgroundColor:\5\?(\w+):(\w+),backgroundMaterial:["`]none["`]\}:\{backgroundColor:(\w+),backgroundMaterial:["`]mica["`]\}:\2===["`]linux["`]&&\3!==["`]hotkeyWindowHome["`]&&\3!==["`]hotkeyWindowThread["`]\?\{backgroundColor:\5\?\6:\7,backgroundMaterial:null\}:\{backgroundColor:\8,backgroundMaterial:null\}\}/s;
+            $patched_lm = qr/case["`]hotkeyWindowHome["`]:return\{frame:!1,transparent:\w+===["`]linux["`]\\?!1:!0,hasShadow:!0,resizable:!1/s;
+            $unpatched_lm = qr/case["`]hotkeyWindowHome["`]:return\{frame:!1,transparent:!0,hasShadow:!0,resizable:!1/s;
+            $unpatched_lm2 = qr/case["`]hotkeyWindowThread["`]:return\{frame:!1,transparent:!0,hasShadow:!0,resizable:!0/s;
+        }
+
+        if (!/$patched_cm/) {
+            s/$unpatched_cm/function $1({platform:$2,appearance:$3,opaqueWindowsEnabled:$4,prefersDarkColors:$5}){return $2===`win32`&&$3!==`hotkeyWindowHome`&&$3!==`hotkeyWindowThread`?$4?{backgroundColor:$5?$6:$7,backgroundMaterial:`none`}:{backgroundColor:$8,backgroundMaterial:`mica`}:$2===`linux`?{backgroundColor:$5?$6:$7,backgroundMaterial:null}:{backgroundColor:$8,backgroundMaterial:null}}/s
+                or die "Could not locate Linux hotkey window backdrop helper in $ARGV\n";
+        }
+
+        s/$unpatched_lm/case`hotkeyWindowHome`:return{frame:!1,transparent:n===`linux`?!1:!0,hasShadow:!0,resizable:!1/s
+            or /$patched_lm/ or die "Could not locate Linux hotkey home window config in $ARGV\n";
+
+        s/$unpatched_lm2/case`hotkeyWindowThread`:return{frame:!1,transparent:n===`linux`?!1:!0,hasShadow:!0,resizable:!0/s
+            or /case["`]hotkeyWindowThread["`]:return\{frame:!1,transparent:\w+===["`]linux["`]\\?!1:!0,hasShadow:!0,resizable:!0/s
+            or die "Could not locate Linux hotkey thread window config in $ARGV\n";
+    ' "$main_bundle" || error "Failed to patch Linux hotkey window behavior in $main_bundle"
+}
+
 # ---- Extract and patch app.asar ----
 patch_asar() {
     local app_dir="$1"
@@ -231,6 +347,15 @@ patch_asar() {
 
     # Use opaque BrowserWindow backgrounds on Linux to avoid alpha-composited artifacts.
     patch_linux_window_backdrop "$WORK_DIR/app-extracted"
+
+    # Use Electron's Linux custom title bar path instead of the default frame.
+    patch_linux_primary_titlebar "$WORK_DIR/app-extracted"
+
+    # Tone down the Linux title bar overlay buttons so they blend with the UI.
+    patch_linux_titlebar_overlay_style "$WORK_DIR/app-extracted"
+
+    # Transparent hotkey windows ghost badly on some Linux/Wayland stacks.
+    patch_linux_hotkey_windows "$WORK_DIR/app-extracted"
 
     # Build native modules in clean environment and copy back
     build_native_modules "$WORK_DIR/app-extracted"
@@ -286,6 +411,13 @@ install_app() {
     if [ -d "$WORK_DIR/app.asar.unpacked" ]; then
         cp -r "$WORK_DIR/app.asar.unpacked" "$INSTALL_DIR/resources/"
     fi
+
+    rm -f "$INSTALL_DIR/resources/default_app.asar"
+
+    if [ -f "$INSTALL_DIR/electron" ] && [ ! -f "$INSTALL_DIR/codex-desktop" ]; then
+        mv "$INSTALL_DIR/electron" "$INSTALL_DIR/codex-desktop"
+    fi
+
     info "app.asar installed"
 }
 
@@ -294,37 +426,37 @@ create_start_script() {
     cat > "$INSTALL_DIR/start.sh" << 'SCRIPT'
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WEBVIEW_DIR="$SCRIPT_DIR/content/webview"
+APP_BIN="$SCRIPT_DIR/codex-desktop"
 
-pkill -f "http.server 5175" 2>/dev/null
-sleep 0.5
+# Desktop launchers often run with a reduced PATH on Linux.
+export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH"
 
-if [ -d "$WEBVIEW_DIR" ] && [ "$(ls -A "$WEBVIEW_DIR" 2>/dev/null)" ]; then
-    cd "$WEBVIEW_DIR"
-    nohup python3 -m http.server 5175 &> /dev/null &
-    HTTP_PID=$!
-    trap "kill $HTTP_PID 2>/dev/null" EXIT
-
-    # Wait for the HTTP server to be ready (up to 5 seconds)
-    echo "Waiting for webview server..."
-    for i in $(seq 1 50); do
-        if python3 -c "import socket; s=socket.socket(); s.settimeout(0.5); s.connect(('127.0.0.1',5175)); s.close()" 2>/dev/null; then
-            echo "Webview server ready."
-            break
-        fi
-        sleep 0.1
-    done
-fi
-
-export CODEX_CLI_PATH="${CODEX_CLI_PATH:-$(which codex 2>/dev/null)}"
+export CODEX_CLI_PATH="${CODEX_CLI_PATH:-$(command -v codex 2>/dev/null)}"
 
 if [ -z "$CODEX_CLI_PATH" ]; then
     echo "Error: Codex CLI not found. Install with: npm i -g @openai/codex"
     exit 1
 fi
 
+if [ ! -x "$APP_BIN" ]; then
+    echo "Error: Packaged Codex Desktop binary not found at $APP_BIN"
+    exit 1
+fi
+
+electron_args=(
+    --no-sandbox
+    --ozone-platform-hint=auto
+    --disable-gpu-sandbox
+)
+
+if [ "${CODEX_WAYLAND_WINDOW_DECORATIONS:-1}" = "1" ]; then
+    electron_args+=(--enable-features=WaylandWindowDecorations)
+else
+    echo "WaylandWindowDecorations disabled."
+fi
+
 cd "$SCRIPT_DIR"
-exec "$SCRIPT_DIR/electron" --no-sandbox --ozone-platform-hint=auto --disable-gpu-sandbox --enable-features=WaylandWindowDecorations "$@"
+exec "$APP_BIN" "${electron_args[@]}" "$@"
 SCRIPT
 
     chmod +x "$INSTALL_DIR/start.sh"
