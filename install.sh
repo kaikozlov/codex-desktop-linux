@@ -30,7 +30,7 @@ trap 'error "Failed at line $LINENO (exit code $?)"' ERR
 # ---- Check dependencies ----
 check_deps() {
     local missing=()
-    for cmd in node npm npx python3 7z curl unzip; do
+    for cmd in node npm npx python3 7z curl unzip perl; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
     if [ ${#missing[@]} -ne 0 ]; then
@@ -161,6 +161,45 @@ build_native_modules() {
     cp -r "$build_dir/node_modules/node-pty" "$app_extracted/node_modules/"
 }
 
+# ---- Patch Linux window backdrop defaults ----
+patch_linux_window_backdrop() {
+    local build_dir="$1/.vite/build"
+    local main_bundle=""
+    local bundle_count=0
+
+    [ -d "$build_dir" ] || error "Build directory not found: $build_dir"
+
+    while IFS= read -r path; do
+        main_bundle="$path"
+        bundle_count=$((bundle_count + 1))
+    done < <(find "$build_dir" -maxdepth 1 -type f -name "main-*.js" | sort)
+
+    [ "$bundle_count" -eq 1 ] || error "Expected exactly one main bundle in $build_dir (found $bundle_count)"
+
+    perl -0pi -e '
+        BEGIN {
+            $patched = qr/function\s+\w+\(\{platform:\w+,appearance:\w+,opaqueWindowsEnabled:\w+,prefersDarkColors:\w+\}\)\{return \w+===["`]win32["`]&&\w+!==["`]hotkeyWindowHome["`]&&\w+!==["`]hotkeyWindowThread["`]\?\w+\?\{backgroundColor:\w+\?\w+:\w+,backgroundMaterial:["`]none["`]\}:\{backgroundColor:\w+,backgroundMaterial:["`]mica["`]\}:\w+===["`]linux["`]&&\w+!==["`]hotkeyWindowHome["`]&&\w+!==["`]hotkeyWindowThread["`]\?\{backgroundColor:\w+\?\w+:\w+,backgroundMaterial:null\}:\{backgroundColor:\w+,backgroundMaterial:null\}\}/s;
+            $unpatched = qr/function\s+(\w+)\(\{platform:(\w+),appearance:(\w+),opaqueWindowsEnabled:(\w+),prefersDarkColors:(\w+)\}\)\{return \2===["`]win32["`]&&\3!==["`]hotkeyWindowHome["`]&&\3!==["`]hotkeyWindowThread["`]\?\4\?\{backgroundColor:\5\?(\w+):(\w+),backgroundMaterial:["`]none["`]\}:\{backgroundColor:(\w+),backgroundMaterial:["`]mica["`]\}:\{backgroundColor:\8,backgroundMaterial:null\}\}/s;
+        }
+
+        if (/$patched/) {
+            $changed = 1;
+            next;
+        }
+
+        if (s/$unpatched/function $1({platform:$2,appearance:$3,opaqueWindowsEnabled:$4,prefersDarkColors:$5}){return $2===`win32`&&$3!==`hotkeyWindowHome`&&$3!==`hotkeyWindowThread`?$4?{backgroundColor:$5?$6:$7,backgroundMaterial:`none`}:{backgroundColor:$8,backgroundMaterial:`mica`}:$2===`linux`&&$3!==`hotkeyWindowHome`&&$3!==`hotkeyWindowThread`?{backgroundColor:$5?$6:$7,backgroundMaterial:null}:{backgroundColor:$8,backgroundMaterial:null}}/s) {
+            $changed = 1;
+            next;
+        }
+
+        die "Could not locate Linux window backdrop helper in $ARGV\n";
+
+        END {
+            die "Failed to patch Linux window backdrop helper in $ARGV\n" if !$changed;
+        }
+    ' "$main_bundle" || error "Failed to patch Linux window backdrop helper in $main_bundle"
+}
+
 # ---- Extract and patch app.asar ----
 patch_asar() {
     local app_dir="$1"
@@ -180,6 +219,9 @@ patch_asar() {
     # Remove macOS-only modules
     rm -rf "$WORK_DIR/app-extracted/node_modules/sparkle-darwin" 2>/dev/null || true
     find "$WORK_DIR/app-extracted" -name "sparkle.node" -delete 2>/dev/null || true
+
+    # Use opaque BrowserWindow backgrounds on Linux to avoid alpha-composited artifacts.
+    patch_linux_window_backdrop "$WORK_DIR/app-extracted"
 
     # Build native modules in clean environment and copy back
     build_native_modules "$WORK_DIR/app-extracted"

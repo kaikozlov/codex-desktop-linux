@@ -121,7 +121,7 @@ The macOS Codex app is an Electron application. The core code (`app.asar`) is pl
 
 The installer replaces the macOS Electron with a Linux build and recompiles the native modules using `@electron/rebuild`. The `sparkle` module (macOS-only auto-updater) is removed since it has no Linux equivalent.
 
-A small Python HTTP server is used as a workaround: when `app.isPackaged` is `false` (which happens with extracted builds), the app tries to connect to a Vite dev server on `localhost:5175`. The HTTP server serves the static webview files on that port.
+The installer also patches the main Electron process bundle on Linux so the primary window uses an opaque background instead of an alpha-composited one. This avoids resize/sidebar transition artifacts on some Linux compositor and NVIDIA combinations.
 
 ## Troubleshooting
 
